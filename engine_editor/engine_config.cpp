@@ -341,6 +341,10 @@ bool loadConfig(const std::string &filePath, EngineConfig *config, std::string *
         if (error) *error = "Missing END record";
         return false;
     }
+    if (in >> token) {
+        if (error) *error = "Unexpected data after END record: " + token;
+        return false;
+    }
 
     std::vector<ValidationIssue> issues;
     if (!validate(loaded, &issues)) {
