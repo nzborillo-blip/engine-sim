@@ -53,7 +53,7 @@ TEST(EngineEditorConfig, RejectsTrailingDataAfterEndRecord) {
     ASSERT_TRUE(saveConfig(original, path.string(), &error)) << error;
     {
         std::ofstream out(path, std::ios::app);
-        out << "UNEXPECTED_RECORD\\n";
+        out << "UNEXPECTED_RECORD\n";
     }
 
     EngineConfig loaded = makeDefaultEngineConfig();
