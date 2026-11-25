@@ -1,5 +1,6 @@
 #include "engine_editor_window.h"
 #include <CommCtrl.h>
+#include <CommDlg.h>
 #include <algorithm>
 #include <cmath>
 #include <cwchar>
@@ -7,6 +8,7 @@
 #include <iomanip>
 #include <sstream>
 #include <utility>
+#include <vector>
 
 namespace engine_editor {
 namespace {
@@ -44,6 +46,14 @@ bool parseValue(const std::wstring &s,double *value) {
 }
 void setFont(HWND h) {
  SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)),TRUE);
+}
+std::string toAnsiPath(const wchar_t *path) {
+ const int length=WideCharToMultiByte(CP_ACP,0,path,-1,nullptr,0,nullptr,nullptr);
+ if(length<=1) return {};
+ std::string result(static_cast<std::size_t>(length),'\\0');
+ if(WideCharToMultiByte(CP_ACP,0,path,-1,&result[0],length,nullptr,nullptr)!=length) return {};
+ result.resize(static_cast<std::size_t>(length-1));
+ return result;
 }
 } // namespace
 
@@ -101,6 +111,8 @@ LRESULT EngineEditorWindow::handleMessage(UINT msg,WPARAM wp,LPARAM lp){
   if(HIWORD(wp)==BN_CLICKED){
    if(LOWORD(wp)==ApplyButtonId){applyDraft();return 0;}
    if(LOWORD(wp)==ReloadButtonId){reloadDraft();return 0;}
+   if(LOWORD(wp)==LoadButtonId){loadConfigFile();return 0;}
+   if(LOWORD(wp)==SaveButtonId){saveConfigFile();return 0;}
   }
   break;
  case WM_CLOSE: DestroyWindow(m_window); return 0;
@@ -139,11 +151,17 @@ void EngineEditorWindow::createControls(){
   WS_CHILD|WS_VISIBLE|SS_LEFT,28,598,690,22,m_window,nullptr,m_instance,nullptr); setFont(hint);
  m_status=CreateWindowExW(0,L"STATIC",L"Gotowy",WS_CHILD|WS_VISIBLE|SS_LEFT,
   28,635,690,24,m_window,reinterpret_cast<HMENU>(3300),m_instance,nullptr); setFont(m_status);
- HWND reload=CreateWindowExW(0,L"BUTTON",L"ODCZYTAJ AKTYWNY SILNIK",
-  WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON|WS_TABSTOP,250,675,220,34,m_window,
+ HWND load=CreateWindowExW(0,L"BUTTON",L"WCZYTAJ PLIK",
+  WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON|WS_TABSTOP,28,675,150,34,m_window,
+  reinterpret_cast<HMENU>(LoadButtonId),m_instance,nullptr); setFont(load);
+ HWND save=CreateWindowExW(0,L"BUTTON",L"ZAPISZ PLIK",
+  WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON|WS_TABSTOP,190,675,150,34,m_window,
+  reinterpret_cast<HMENU>(SaveButtonId),m_instance,nullptr); setFont(save);
+ HWND reload=CreateWindowExW(0,L"BUTTON",L"ODCZYTAJ AKTYWNY",
+  WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON|WS_TABSTOP,352,675,175,34,m_window,
   reinterpret_cast<HMENU>(ReloadButtonId),m_instance,nullptr); setFont(reload);
  HWND apply=CreateWindowExW(0,L"BUTTON",L"MODYFIKUJ SILNIK",
-  WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON|WS_TABSTOP,486,675,228,34,m_window,
+  WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON|WS_TABSTOP,539,675,175,34,m_window,
   reinterpret_cast<HMENU>(ApplyButtonId),m_instance,nullptr); setFont(apply);
  updateControls();
 }
@@ -186,6 +204,66 @@ void EngineEditorWindow::applyDraft(){
 void EngineEditorWindow::reloadDraft(){
  if(m_currentConfigHandler){m_draft=m_currentConfigHandler();updateControls();setStatus(L"Przywrocono wartosci aktywnego silnika.");}
 }
+void EngineEditorWindow::loadConfigFile(){
+ wchar_t fileName[MAX_PATH]{};
+ OPENFILENAMEW dialog{};
+ dialog.lStructSize=sizeof(dialog);
+ dialog.hwndOwner=m_window;
+ dialog.lpstrFilter=L"Engine Sim config (*.esconfig)\0*.esconfig\0All files (*.*)\0*.*\0\0";
+ dialog.lpstrFile=fileName;
+ dialog.nMaxFile=MAX_PATH;
+ dialog.nFilterIndex=1;
+ dialog.Flags=OFN_FILEMUSTEXIST|OFN_PATHMUSTEXIST|OFN_HIDEREADONLY;
+ if(!GetOpenFileNameW(&dialog)) return;
+ std::string path=toAnsiPath(fileName);
+ if(path.empty()){setStatus(L"Nie mozna odczytac sciezki pliku.");return;}
+ EngineConfig loaded;
+ std::string error;
+ if(!loadConfig(path,&loaded,&error)){
+  setStatus(std::wstring(error.begin(),error.end()));return;
+ }
+ m_draft=std::move(loaded);
+ updateControls();
+ setStatus(L"Wczytano konfiguracje do kopii roboczej. Kliknij MODYFIKUJ SILNIK, aby ja zastosowac.");
+}
+
+void EngineEditorWindow::saveConfigFile(){
+ wchar_t fileName[MAX_PATH]=L"engine.esconfig";
+ OPENFILENAMEW dialog{};
+ dialog.lStructSize=sizeof(dialog);
+ dialog.hwndOwner=m_window;
+ dialog.lpstrFilter=L"Engine Sim config (*.esconfig)\0*.esconfig\0All files (*.*)\0*.*\0\0";
+ dialog.lpstrFile=fileName;
+ dialog.nMaxFile=MAX_PATH;
+ dialog.nFilterIndex=1;
+ dialog.lpstrDefExt=L"esconfig";
+ dialog.Flags=OFN_PATHMUSTEXIST|OFN_OVERWRITEPROMPT|OFN_HIDEREADONLY;
+ if(!GetSaveFileNameW(&dialog)) return;
+ std::string path=toAnsiPath(fileName);
+ if(path.empty()){setStatus(L"Nie mozna odczytac sciezki pliku.");return;}
+ for(int i=0;i<ParameterCount;++i){
+  wchar_t buffer[128]{};
+  GetWindowTextW(m_edits[i],buffer,128);
+  double value=0.0;
+  if(!parseValue(buffer,&value)||value<kSpecs[i].minimum||value>kSpecs[i].maximum){
+   setStatus(L"Nie mozna zapisac: sprawdz wartosci parametrow.");
+   return;
+  }
+  m_draft.parameters[kSpecs[i].key]=value;
+ }
+ std::vector<ValidationIssue> issues;
+ if(!validate(m_draft,&issues)){
+  const std::string message=issues.empty()?"Invalid configuration":issues.front().message;
+  setStatus(std::wstring(message.begin(),message.end()));
+  return;
+ }
+ std::string error;
+ if(!saveConfig(m_draft,path,&error)){
+  setStatus(std::wstring(error.begin(),error.end()));return;
+ }
+ setStatus(L"Zapisano konfiguracje.");
+}
+
 void EngineEditorWindow::setStatus(const std::wstring &message){
  if(m_status) SetWindowTextW(m_status,message.c_str());
 }

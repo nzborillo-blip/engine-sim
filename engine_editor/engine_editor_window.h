@@ -26,6 +26,8 @@ private:
     static constexpr int EditFirstId = 3100;
     static constexpr int ApplyButtonId = 3200;
     static constexpr int ReloadButtonId = 3201;
+    static constexpr int LoadButtonId = 3202;
+    static constexpr int SaveButtonId = 3203;
     static LRESULT CALLBACK windowProcedure(HWND, UINT, WPARAM, LPARAM);
     LRESULT handleMessage(UINT, WPARAM, LPARAM);
     void createControls();
@@ -34,6 +36,8 @@ private:
     void updateEditFromParameter(int index);
     void applyDraft();
     void reloadDraft();
+    void loadConfigFile();
+    void saveConfigFile();
     void setStatus(const std::wstring &message);
     HINSTANCE m_instance = nullptr;
     HWND m_window = nullptr;

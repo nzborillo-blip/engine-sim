@@ -287,6 +287,7 @@ target_link_libraries(engine-sim-app
     engine-sim
     engine-editor-config
     comctl32
+    comdlg32
 )
 
 if (DTV)
