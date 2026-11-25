@@ -663,6 +663,27 @@ bool EngineSimApplication::applyEditorConfig(
             : issues.front().path + ": " + issues.front().message;
         return false;
     }
+
+    // This first live editor pass applies runtime scalars only. Do not silently
+    // report success for edited component graphs until a full rebuild path exists.
+    const engine_editor::EngineConfig defaultConfig = engine_editor::makeDefaultEngineConfig();
+    const auto sameComponents = [&]() {
+        if (config.components.size() != defaultConfig.components.size()) return false;
+        for (std::size_t i = 0; i < config.components.size(); ++i) {
+            const auto &a = config.components[i];
+            const auto &b = defaultConfig.components[i];
+            if (a.id != b.id || a.type != b.type || a.name != b.name
+                || a.parameters != b.parameters || a.connections != b.connections) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (!sameComponents()) {
+        error = "Component geometry and topology changes need a full engine rebuild and are not enabled yet.";
+        return false;
+    }
+
     const auto getNumber = [&config](const char *key, double *value) {
         const auto it = config.parameters.find(key);
         if (it == config.parameters.end()) return false;
