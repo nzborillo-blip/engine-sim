@@ -22,6 +22,7 @@
 #include "info_cluster.h"
 #include "application_settings.h"
 #include "transmission.h"
+#include "../engine_editor/engine_editor_window.h"
 
 #include "delta.h"
 #include "dtv.h"
@@ -90,6 +91,8 @@ class EngineSimApplication {
 
     protected:
         void loadScript();
+        engine_editor::EngineConfig captureEditorConfig() const;
+        bool applyEditorConfig(const engine_editor::EngineConfig &config, std::string &error);
         void processEngineInput();
         void renderScene();
 
@@ -138,6 +141,7 @@ class EngineSimApplication {
         double m_dynoSpeed;
         double m_torque;
 
+        engine_editor::EngineEditorWindow m_engineEditorWindow;
         UiManager m_uiManager;
         EngineView *m_engineView;
         RightGaugeCluster *m_rightGaugeCluster;

@@ -213,6 +213,7 @@ endif (DISCORD_ENABLED)
 add_executable(engine-sim-app WIN32
     # Source files
     src/main.cpp
+    engine_editor/engine_editor_window.cpp
     src/engine_sim_application.cpp
     src/geometry_generator.cpp
     src/simulation_object.cpp
@@ -247,6 +248,7 @@ add_executable(engine-sim-app WIN32
 
     # Include files
     include/delta.h
+    engine_editor/engine_editor_window.h
     include/dtv.h
     include/engine_sim_application.h
     include/geometry_generator.h
@@ -284,6 +286,7 @@ add_executable(engine-sim-app WIN32
 target_link_libraries(engine-sim-app
     engine-sim
     engine-editor-config
+    comctl32
 )
 
 if (DTV)

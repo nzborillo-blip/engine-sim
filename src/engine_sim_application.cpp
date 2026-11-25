@@ -17,6 +17,7 @@
 #include "../scripting/include/compiler.h"
 
 #include <chrono>
+#include <cmath>
 #include <stdlib.h>
 #include <sstream>
 
@@ -153,6 +154,19 @@ void EngineSimApplication::initialize(void *instance, ysContextObject::DeviceAPI
     m_geometryGenerator.initialize(100000, 200000);
 
     initialize();
+
+    const HINSTANCE editorInstance = (instance != nullptr)
+        ? *static_cast<HINSTANCE *>(instance)
+        : GetModuleHandleW(nullptr);
+    m_engineEditorWindow.initialize(
+        editorInstance,
+        captureEditorConfig(),
+        [this](const engine_editor::EngineConfig &config, std::string &error) {
+            return applyEditorConfig(config, error);
+        },
+        [this]() {
+            return captureEditorConfig();
+        });
 }
 
 void EngineSimApplication::initialize() {
@@ -346,6 +360,7 @@ float EngineSimApplication::unitsToPixels(float units) const {
 
 void EngineSimApplication::run() {
     while (true) {
+        m_engineEditorWindow.pumpMessages();
         m_engine.StartFrame();
 
         if (!m_engine.IsOpen()) break;
@@ -422,6 +437,7 @@ void EngineSimApplication::run() {
 }
 
 void EngineSimApplication::destroy() {
+    m_engineEditorWindow.destroy();
     m_shaderSet.Destroy();
 
     m_engine.GetDevice()->DestroyGPUBuffer(m_geometryVertexBuffer);
@@ -613,6 +629,98 @@ const SimulationObject::ViewParameters &
     EngineSimApplication::getViewParameters() const
 {
     return m_viewParameters;
+}
+
+
+engine_editor::EngineConfig EngineSimApplication::captureEditorConfig() const {
+    engine_editor::EngineConfig config = engine_editor::makeDefaultEngineConfig();
+    if (m_iceEngine == nullptr) return config;
+    config.name = m_iceEngine->getName();
+    config.parameters["starter_torque_nm"] = m_iceEngine->getStarterTorque();
+    config.parameters["starter_speed_rpm"] = units::toRpm(m_iceEngine->getStarterSpeed());
+    config.parameters["redline_rpm"] = units::toRpm(m_iceEngine->getRedline());
+    config.parameters["dyno_min_rpm"] = units::toRpm(m_iceEngine->getDynoMinSpeed());
+    config.parameters["dyno_max_rpm"] = units::toRpm(m_iceEngine->getDynoMaxSpeed());
+    config.parameters["dyno_hold_rpm"] = units::toRpm(m_iceEngine->getDynoHoldStep());
+    config.parameters["simulation_frequency_hz"] = m_iceEngine->getSimulationFrequency();
+    config.parameters["initial_high_frequency_gain"] = m_iceEngine->getInitialHighFrequencyGain();
+    config.parameters["initial_noise"] = m_iceEngine->getInitialNoise();
+    config.parameters["initial_jitter"] = m_iceEngine->getInitialJitter();
+    return config;
+}
+
+bool EngineSimApplication::applyEditorConfig(
+    const engine_editor::EngineConfig &config,
+    std::string &error)
+{
+    if (m_iceEngine == nullptr || m_simulator == nullptr) {
+        error = "No active engine is loaded.";
+        return false;
+    }
+    std::vector<engine_editor::ValidationIssue> issues;
+    if (!engine_editor::validate(config, &issues)) {
+        error = issues.empty() ? "Invalid engine configuration."
+            : issues.front().path + ": " + issues.front().message;
+        return false;
+    }
+    const auto getNumber = [&config](const char *key, double *value) {
+        const auto it = config.parameters.find(key);
+        if (it == config.parameters.end()) return false;
+        if (const auto *number = std::get_if<double>(&it->second)) {
+            *value = *number;
+            return std::isfinite(*value);
+        }
+        if (const auto *integer = std::get_if<std::int64_t>(&it->second)) {
+            *value = static_cast<double>(*integer);
+            return std::isfinite(*value);
+        }
+        return false;
+    };
+
+    double starterTorque = 0.0, starterSpeed = 0.0, redline = 0.0;
+    double dynoMin = 0.0, dynoMax = 0.0, dynoHold = 0.0;
+    double simulationFrequency = 0.0, highFrequencyGain = 0.0, noise = 0.0, jitter = 0.0;
+    if (!getNumber("starter_torque_nm", &starterTorque)
+        || !getNumber("starter_speed_rpm", &starterSpeed)
+        || !getNumber("redline_rpm", &redline)
+        || !getNumber("dyno_min_rpm", &dynoMin)
+        || !getNumber("dyno_max_rpm", &dynoMax)
+        || !getNumber("dyno_hold_rpm", &dynoHold)
+        || !getNumber("simulation_frequency_hz", &simulationFrequency)
+        || !getNumber("initial_high_frequency_gain", &highFrequencyGain)
+        || !getNumber("initial_noise", &noise)
+        || !getNumber("initial_jitter", &jitter)) {
+        error = "The configuration is missing a required numeric parameter.";
+        return false;
+    }
+
+    // Complete validation before mutating the running engine.
+    m_iceEngine->setStarterTorque(starterTorque);
+    m_iceEngine->setStarterSpeed(units::rpm(starterSpeed));
+    m_iceEngine->setRedline(units::rpm(redline));
+    m_iceEngine->setDynoMinSpeed(units::rpm(dynoMin));
+    m_iceEngine->setDynoMaxSpeed(units::rpm(dynoMax));
+    m_iceEngine->setDynoHoldStep(units::rpm(dynoHold));
+    m_iceEngine->setSimulationFrequency(simulationFrequency);
+    m_iceEngine->setInitialHighFrequencyGain(highFrequencyGain);
+    m_iceEngine->setInitialNoise(noise);
+    m_iceEngine->setInitialJitter(jitter);
+
+    m_simulator->m_starterMotor.m_maxTorque = starterTorque;
+    m_simulator->m_starterMotor.m_rotationSpeed = -units::rpm(starterSpeed);
+    m_simulator->setSimulationFrequency(static_cast<int>(std::lround(simulationFrequency)));
+    Synthesizer::AudioParameters audioParams = m_simulator->synthesizer().getAudioParameters();
+    audioParams.dF_F_mix = static_cast<float>(highFrequencyGain);
+    audioParams.airNoise = static_cast<float>(noise);
+    audioParams.inputSampleNoise = static_cast<float>(jitter);
+    m_simulator->synthesizer().setAudioParameters(audioParams);
+
+    m_dynoSpeed = clamp(m_dynoSpeed, m_iceEngine->getDynoMinSpeed(), m_iceEngine->getDynoMaxSpeed());
+    m_simulator->m_dyno.m_rotationSpeed = m_dynoSpeed;
+    if (m_oscCluster != nullptr)
+        m_oscCluster->setDynoMaxRange(units::toRpm(m_iceEngine->getRedline()));
+    error.clear();
+    return true;
 }
 
 void EngineSimApplication::loadScript() {

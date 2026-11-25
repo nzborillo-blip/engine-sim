@@ -78,11 +78,17 @@ class Engine : public Part {
         double getTotalVolumeFuelConsumed() const;
 
         inline double getStarterTorque() const { return m_starterTorque; }
+        inline void setStarterTorque(double value) { m_starterTorque = value; }
         inline double getStarterSpeed() const { return m_starterSpeed; }
+        inline void setStarterSpeed(double value) { m_starterSpeed = value; }
         inline double getRedline() const { return m_redline; }
+        inline void setRedline(double value) { m_redline = value; }
         inline double getDynoMinSpeed() const { return m_dynoMinSpeed; }
+        inline void setDynoMinSpeed(double value) { m_dynoMinSpeed = value; }
         inline double getDynoMaxSpeed() const { return m_dynoMaxSpeed; }
+        inline void setDynoMaxSpeed(double value) { m_dynoMaxSpeed = value; }
         inline double getDynoHoldStep() const { return m_dynoHoldStep; }
+        inline void setDynoHoldStep(double value) { m_dynoHoldStep = value; }
 
         int getCylinderBankCount() const { return m_cylinderBankCount; }
         int getCylinderCount() const { return m_cylinderCount; }
@@ -103,9 +109,13 @@ class Engine : public Part {
         Fuel *getFuel() { return &m_fuel; }
 
         double getSimulationFrequency() const { return m_initialSimulationFrequency; }
+        void setSimulationFrequency(double value) { m_initialSimulationFrequency = value; }
         double getInitialHighFrequencyGain() const { return m_initialHighFrequencyGain; }
+        void setInitialHighFrequencyGain(double value) { m_initialHighFrequencyGain = value; }
         double getInitialNoise() const { return m_initialNoise; }
+        void setInitialNoise(double value) { m_initialNoise = value; }
         double getInitialJitter() const { return m_initialJitter; }
+        void setInitialJitter(double value) { m_initialJitter = value; }
 
         virtual Simulator *createSimulator(Vehicle *vehicle, Transmission *transmission);
 

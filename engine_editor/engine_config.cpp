@@ -106,7 +106,9 @@ EngineConfig makeDefaultEngineConfig() {
     config.parameters = {
         {"starter_torque_nm", 120.0}, {"starter_speed_rpm", 200.0},
         {"redline_rpm", 6500.0}, {"dyno_min_rpm", 1000.0},
-        {"dyno_max_rpm", 6500.0}, {"dyno_hold_rpm", 100.0}
+        {"dyno_max_rpm", 6500.0}, {"dyno_hold_rpm", 100.0},
+        {"simulation_frequency_hz", 20000.0}, {"initial_high_frequency_gain", 0.01},
+        {"initial_noise", 1.0}, {"initial_jitter", 0.5}
     };
 
     ComponentConfig crankshaft;
@@ -156,6 +158,21 @@ bool validate(const EngineConfig &config, std::vector<ValidationIssue> *issues) 
         issues->push_back({"engine.dyno_max_rpm", "must be greater than zero"});
     if (hasMin && hasMax && dynoMin >= dynoMax)
         issues->push_back({"engine.dyno_max_rpm", "must be greater than dyno_min_rpm"});
+
+    const auto checkRange = [&](const char *key, double minimum, double maximum) {
+        double value = 0.0;
+        if (readRootNumber(config, key, &value, issues)
+            && (value < minimum || value > maximum)) {
+            issues->push_back({std::string("engine.") + key, "value is outside the supported range"});
+        }
+    };
+    checkRange("starter_torque_nm", 0.0, 1200.0);
+    checkRange("starter_speed_rpm", 50.0, 1500.0);
+    checkRange("dyno_hold_rpm", 10.0, 1000.0);
+    checkRange("simulation_frequency_hz", 400.0, 400000.0);
+    checkRange("initial_high_frequency_gain", 0.0, 1.0);
+    checkRange("initial_noise", 0.0, 4.0);
+    checkRange("initial_jitter", 0.0, 2.0);
 
     std::set<std::string> ids;
     std::size_t crankshafts = 0, banks = 0;
