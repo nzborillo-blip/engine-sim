@@ -191,6 +191,13 @@ if (PIRANHA_ENABLED)
         piranha)
 endif (PIRANHA_ENABLED)
 
+add_library(engine-editor-config STATIC
+    engine_editor/engine_config.cpp
+    engine_editor/engine_config.h
+)
+
+target_include_directories(engine-editor-config PUBLIC engine_editor)
+
 if (DISCORD_ENABLED)
     add_library(discord STATIC
         # Source files
@@ -276,6 +283,7 @@ add_executable(engine-sim-app WIN32
 
 target_link_libraries(engine-sim-app
     engine-sim
+    engine-editor-config
 )
 
 if (DTV)
@@ -310,11 +318,13 @@ add_executable(engine-sim-test
     test/gas_system_tests.cpp
     test/function_test.cpp
     test/synthesizer_tests.cpp
+    test/engine_editor_config_tests.cpp
 )
 
 target_link_libraries(engine-sim-test
     gtest_main
     engine-sim
+    engine-editor-config
 )
 
 include(GoogleTest)
