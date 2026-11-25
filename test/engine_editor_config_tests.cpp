@@ -46,6 +46,24 @@ TEST(EngineEditorConfig, SavesAndLoadsConfiguration) {
     std::remove(filePath.c_str());
 }
 
+TEST(EngineEditorConfig, RejectsTrailingDataAfterEndRecord) {
+    const auto path = std::filesystem::temp_directory_path() / "engine_editor_config_trailing.esconfig";
+    EngineConfig original = makeDefaultEngineConfig();
+    std::string error;
+    ASSERT_TRUE(saveConfig(original, path.string(), &error)) << error;
+    {
+        std::ofstream out(path, std::ios::app);
+        out << "UNEXPECTED_RECORD\\n";
+    }
+
+    EngineConfig loaded = makeDefaultEngineConfig();
+    loaded.name = "Keep this";
+    EXPECT_FALSE(loadConfig(path.string(), &loaded, &error));
+    EXPECT_NE(error.find("Unexpected data after END record"), std::string::npos);
+    EXPECT_EQ(loaded.name, "Keep this");
+    std::remove(path.string().c_str());
+}
+
 TEST(EngineEditorConfig, LoadFailureDoesNotReplaceExistingConfig) {
     EngineConfig loaded = makeDefaultEngineConfig();
     loaded.name = "Keep this";
